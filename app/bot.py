@@ -1,9 +1,11 @@
-"""Asosiy Bot - Aiogram 3.24.0"""
+"""Asosiy Bot - LOCAL API SUPPORT"""
 import asyncio
 import logging
 import sys
+import os
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.telegram import TelegramAPIServer
 from aiogram.enums import ParseMode
 
 from app.config import config
@@ -26,10 +28,25 @@ downloader = Downloader()
 
 
 async def main():
-    bot = Bot(
-        token=config.bot.token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
+    # LOCAL BOT API (2GB+ uchun)
+    use_local = os.getenv('USE_LOCAL_API', 'false').lower() == 'true'
+
+    if use_local:
+        local_server = TelegramAPIServer.from_base("http://localhost:8081")
+        logger.info("🚀 LOCAL BOT API ishlatilmoqda (2GB+ support)")
+
+        bot = Bot(
+            token=config.bot.token,
+            server=local_server,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        )
+    else:
+        logger.info("☁️ TELEGRAM SERVER ishlatilmoqda (2GB limit)")
+
+        bot = Bot(
+            token=config.bot.token,
+            default=DefaultBotProperties(parse_mode=ParseMode.HTML)
+        )
 
     dp = Dispatcher()
     dp.message.middleware(ThrottlingMiddleware(config.throttle_rate))

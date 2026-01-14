@@ -1,4 +1,3 @@
-
 version: '3.8'
 
 services:
@@ -19,9 +18,24 @@ services:
     image: redis:7-alpine
     container_name: videobot_redis
     restart: always
-    command: redis-server --maxmemory 256mb
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
       - "6379:6379"
 
+  # LOCAL BOT API (2GB+ uchun)
+  telegram-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    container_name: telegram_bot_api
+    restart: always
+    environment:
+      TELEGRAM_API_ID: "${TELEGRAM_API_ID}"
+      TELEGRAM_API_HASH: "${TELEGRAM_API_HASH}"
+      TELEGRAM_LOCAL: "1"
+    volumes:
+      - telegram_data:/var/lib/telegram-bot-api
+    ports:
+      - "8081:8081"
+
 volumes:
   postgres_data:
+  telegram_data:

@@ -112,6 +112,55 @@ class Downloader:
         return str(num)
 
     @staticmethod
+    async def download_audio(url: str) -> Optional[Tuple[str, int, str]]:
+        """Audio (MP3) yuklash - TITLE bilan!"""
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'outtmpl': 'temp/%(id)s.%(ext)s',
+                'quiet': True,
+                'postprocessors': [{
+                    'key': 'FFmpegExtractAudio',
+                    'preferredcodec': 'mp3',
+                    'preferredquality': '192',
+                }],
+            }
+
+            def _download():
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    filename = ydl.prepare_filename(info)
+                    mp3_file = os.path.splitext(filename)[0] + '.mp3'
+
+                    # Title va Artist olish
+                    title = info.get('title', 'Unknown')
+                    artist = info.get('artist') or info.get('uploader', 'Unknown')
+
+                    return mp3_file, title, artist
+
+            loop = asyncio.get_event_loop()
+            filepath, title, artist = await loop.run_in_executor(None, _download)
+
+            if not os.path.exists(filepath):
+                return None
+
+            file_size = os.path.getsize(filepath)
+
+            if file_size > 50_000_000:  # 50MB
+                os.remove(filepath)
+                return None
+
+            # Fayl nomini o'zgartirish: "Musiqa - Ijrochi.mp3"
+            clean_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()[:50]
+            clean_artist = "".join(c for c in artist if c.isalnum() or c in (' ', '-', '_')).strip()[:30]
+            new_filename = f"{clean_title} - {clean_artist}.mp3"
+
+            return filepath, file_size, new_filename
+        except Exception as e:
+            logger.error(f"Audio download xato: {e}")
+            return None
+
+    @staticmethod
     def _get_platform(url: str) -> str:
         url = url.lower()
         if 'youtube.com' in url or 'youtu.be' in url:

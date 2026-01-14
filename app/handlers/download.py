@@ -1,4 +1,4 @@
-"""Download Handler - PREMIUM DESIGN"""
+"""Download Handler - AUDIO/VIDEO SUPPORT"""
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 import re
@@ -14,7 +14,7 @@ URL_PATTERN = re.compile(r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?
 
 @router.message(F.text.regexp(URL_PATTERN))
 async def handle_url(message: Message, downloader, cache, db):
-    """URL handler - PREMIUM"""
+    """URL handler"""
     try:
         urls = URL_PATTERN.findall(message.text)
         if not urls:
@@ -22,109 +22,167 @@ async def handle_url(message: Message, downloader, cache, db):
 
         url = urls[0]
 
-        # URL ni bazaga saqlash
+        # URL ni saqlash
         url_id = await db.save_url(url)
         if not url_id:
-            await message.answer(
-                "⚠️ <b>Xatolik</b>\n\n"
-                "Iltimos, qaytadan urinib ko'ring."
-            )
+            await message.answer("⚠️ <b>Xatolik</b>\n\nQaytadan urinib ko'ring.")
             return
 
-        # Cache tekshirish
+        # Cache
         cached = await cache.get(url)
         if cached:
-            from app.keyboards.inline import get_quality_keyboard
+            from app.keyboards.inline import get_format_keyboard
             await message.answer(
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"<b>📹 {cached['title']}</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"<b>📹 {cached['title']}</b>\n\n"
                 f"⏱ <b>Davomiyligi:</b> {cached['duration']}\n"
                 f"👁 <b>Ko'rishlar:</b> {cached['views']}\n"
                 f"📢 <b>Kanal:</b> {cached['uploader']}\n\n"
-                f"<b>Sifatni tanlang:</b>",
-                reply_markup=get_quality_keyboard(url_id)
+                f"<b>Formatni tanlang:</b>",
+                reply_markup=get_format_keyboard(url_id)
             )
             return
 
-        # Tahlil qilinmoqda
-        status = await message.answer(
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "<b>⏳ Tahlil qilinmoqda...</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Video ma'lumotlari yuklanmoqda."
-        )
+        # Ma'lumot olish
+        status = await message.answer("<b>⏳ Tahlil qilinmoqda...</b>")
 
         info = await downloader.get_info(url)
 
         if not info:
             await status.edit_text(
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "<b>❌ Video topilmadi</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "<b>Mumkin bo'lgan sabablar:</b>\n"
-                "├ Noto'g'ri havola\n"
-                "├ Video yopiq (private)\n"
-                "└ Video o'chirilgan\n\n"
-                "💡 <b>Maslahat:</b> Havolani qayta tekshiring"
+                "<b>❌ Video topilmadi</b>\n\n"
+                "<b>Sabablar:</b>\n"
+                "• Noto'g'ri havola\n"
+                "• Video yopiq\n"
+                "• Video o'chirilgan"
             )
             return
 
-        # Cache ga saqlash
         await cache.set(url, info)
 
-        from app.keyboards.inline import get_quality_keyboard
+        from app.keyboards.inline import get_format_keyboard
         await status.edit_text(
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"<b>✅ Tayyor!</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<b>✅ Tayyor!</b>\n\n"
             f"<b>📹 {info['title']}</b>\n\n"
             f"⏱ <b>Davomiyligi:</b> {info['duration']}\n"
             f"👁 <b>Ko'rishlar:</b> {info['views']}\n"
             f"📢 <b>Kanal:</b> {info['uploader']}\n\n"
-            f"<b>Sifatni tanlang:</b>",
-            reply_markup=get_quality_keyboard(url_id)
+            f"<b>Formatni tanlang:</b>",
+            reply_markup=get_format_keyboard(url_id)
         )
 
     except Exception as e:
-        logger.error(f"URL handler xato: {e}", exc_info=True)
+        logger.error(f"URL xato: {e}", exc_info=True)
         try:
             await message.answer(
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "<b>⚠️ Texnik xatolik</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
+                "<b>⚠️ Texnik xatolik</b>\n\n"
                 "Iltimos, qaytadan urinib ko'ring."
             )
         except:
             pass
 
 
-@router.callback_query(F.data.startswith('dl:'))
-async def process_download(callback: CallbackQuery, downloader, db, cache):
-    """Video yuklash - PREMIUM"""
+@router.callback_query(F.data.startswith('format:'))
+async def select_format(callback: CallbackQuery, db):
+    """Video yoki Audio tanlash - YANGI!"""
     try:
-        await callback.answer("⚡️ Yuklanmoqda...")
-
         parts = callback.data.split(':')
-        if len(parts) != 3:
-            await callback.message.edit_text("❌ Noto'g'ri format!")
-            return
+        url_id, format_type = int(parts[1]), parts[2]
 
-        url_id, quality = int(parts[1]), parts[2]
+        if format_type == 'audio':
+            # Audio tanlandi - to'g'ridan-to'g'ri yuklash
+            await callback.answer("🎵 Audio yuklanmoqda...")
+            await process_audio_download(callback, url_id, db)
+        else:
+            # Video tanlandi - sifat tanlash
+            await callback.answer("📹 Sifatni tanlang")
+            from app.keyboards.inline import get_quality_keyboard
+            await callback.message.edit_text(
+                "<b>📹 Video sifatini tanlang:</b>",
+                reply_markup=get_quality_keyboard(url_id)
+            )
+    except Exception as e:
+        logger.error(f"Format select xato: {e}")
+        await callback.answer("❌ Xatolik!", show_alert=True)
 
-        # URL ni olish
+
+async def process_audio_download(callback: CallbackQuery, url_id: int, db):
+    """Audio yuklash"""
+    try:
         url = await db.get_url(url_id)
         if not url:
-            await callback.message.edit_text(
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "<b>❌ Xatolik</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Havola topilmadi.\n"
+            await callback.message.edit_text("<b>❌ Havola topilmadi</b>")
+            return
+
+        # Audio yuklash funksiyasi kerak
+        from app.services.downloader import Downloader
+        downloader = Downloader()
+
+        msg = await callback.message.edit_text(
+            "<b>⏬ Audio yuklanmoqda...</b>\n\n"
+            "<b>Format:</b> MP3\n"
+            "<b>Status:</b> Yuklanmoqda"
+        )
+
+        # Audio yuklash (keyingi qadamda qo'shamiz)
+        result = await downloader.download_audio(url)
+
+        if not result:
+            await msg.edit_text(
+                "<b>❌ Yuklash muvaffaqiyatsiz</b>\n\n"
                 "Qaytadan urinib ko'ring."
             )
             return
 
-        # FILE_ID CACHE (TEZKOR!)
+        filepath, file_size, filename = result
+
+        await msg.edit_text("<b>📤 Yuborilmoqda...</b>")
+
+        audio = FSInputFile(filepath, filename=filename)
+
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📢 Botni Ulashish",
+                url="https://t.me/share/url?url=https://t.me/your_bot"
+            )]
+        ])
+
+        await callback.message.answer_audio(
+            audio=audio,
+            title=filename.replace('.mp3', ''),
+            caption=(
+                f"<b>✅ Tayyor!</b>\n\n"
+                f"<b>Format:</b> MP3\n"
+                f"<b>Hajmi:</b> {file_size / 1_000_000:.1f} MB"
+            ),
+            reply_markup=keyboard
+        )
+
+        await msg.delete()
+        await callback.message.delete()
+
+        # Cleanup
+        asyncio.create_task(cleanup_file(filepath))
+
+    except Exception as e:
+        logger.error(f"Audio download xato: {e}")
+        await callback.message.edit_text("<b>⚠️ Xatolik</b>")
+
+
+@router.callback_query(F.data.startswith('dl:'))
+async def process_download(callback: CallbackQuery, downloader, db, cache):
+    """Video yuklash"""
+    try:
+        await callback.answer("⚡️ Yuklanmoqda...")
+
+        parts = callback.data.split(':')
+        url_id, quality = int(parts[1]), parts[2]
+
+        url = await db.get_url(url_id)
+        if not url:
+            await callback.message.edit_text("<b>❌ Havola topilmadi</b>")
+            return
+
+        # FILE_ID CACHE
         file_id = await cache.get_file_id(url, quality)
 
         if file_id:
@@ -140,13 +198,9 @@ async def process_download(callback: CallbackQuery, downloader, db, cache):
                 await callback.message.answer_video(
                     video=file_id,
                     caption=(
-                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                        f"<b>✅ Muvaffaqiyatli!</b>\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                        f"<b>✅ Muvaffaqiyatli!</b>\n\n"
                         f"<b>Sifat:</b> {quality}\n"
-                        f"<b>Status:</b> ⚡️ Cache dan yuborildi\n\n"
-                        f"━━━━━━━━━━━━━━━━━━━━\n"
-                        f"💡 Do'stlaringizga ulashing!"
+                        f"<b>Status:</b> ⚡️ Cache"
                     ),
                     reply_markup=keyboard
                 )
@@ -164,26 +218,16 @@ async def process_download(callback: CallbackQuery, downloader, db, cache):
 
         # YUKLASH
         msg = await callback.message.edit_text(
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "<b>⏬ Yuklanmoqda...</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            "<b>⏬ Yuklanmoqda...</b>\n\n"
             f"<b>Sifat:</b> {quality}\n"
-            "<b>Status:</b> Serverdan yuklanmoqda\n\n"
-            "⏳ Iltimos kuting..."
+            "<b>Status:</b> Serverdan yuklanmoqda"
         )
 
         result = await downloader.download(url, quality)
 
         if not result:
             await msg.edit_text(
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "<b>❌ Yuklash muvaffaqiyatsiz</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "<b>Mumkin bo'lgan sabablar:</b>\n"
-                "├ Video hajmi 2GB dan katta\n"
-                "├ Internet bilan muammo\n"
-                "└ Server xatosi\n\n"
-                "💡 <b>Yechim:</b>\n"
+                "<b>❌ Yuklash muvaffaqiyatsiz</b>\n\n"
                 "• Pastroq sifat tanlang\n"
                 "• Qaytadan urinib ko'ring"
             )
@@ -197,13 +241,7 @@ async def process_download(callback: CallbackQuery, downloader, db, cache):
 
         filepath, file_size = result
 
-        await msg.edit_text(
-            "━━━━━━━━━━━━━━━━━━━━\n"
-            "<b>📤 Yuborilmoqda...</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"<b>Hajmi:</b> {file_size / 1_000_000:.1f} MB\n"
-            "<b>Status:</b> Telegram ga yuklanmoqda"
-        )
+        await msg.edit_text("<b>📤 Yuborilmoqda...</b>")
 
         video = FSInputFile(filepath)
 
@@ -217,13 +255,9 @@ async def process_download(callback: CallbackQuery, downloader, db, cache):
         sent_message = await callback.message.answer_video(
             video=video,
             caption=(
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"<b>✅ Muvaffaqiyatli!</b>\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"<b>✅ Muvaffaqiyatli!</b>\n\n"
                 f"<b>Sifat:</b> {quality}\n"
-                f"<b>Hajmi:</b> {file_size / 1_000_000:.1f} MB\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"💡 Do'stlaringizga ulashing!"
+                f"<b>Hajmi:</b> {file_size / 1_000_000:.1f} MB"
             ),
             reply_markup=keyboard
         )
@@ -249,10 +283,8 @@ async def process_download(callback: CallbackQuery, downloader, db, cache):
         logger.error(f"Download xato: {e}", exc_info=True)
         try:
             await callback.message.edit_text(
-                "━━━━━━━━━━━━━━━━━━━━\n"
-                "<b>⚠️ Kutilmagan xatolik</b>\n"
-                "━━━━━━━━━━━━━━━━━━━━\n\n"
-                "Iltimos, qaytadan urinib ko'ring."
+                "<b>⚠️ Kutilmagan xatolik</b>\n\n"
+                "Qaytadan urinib ko'ring."
             )
         except:
             pass
