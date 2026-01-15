@@ -139,3 +139,11 @@ async def process_broadcast(message: Message, state: FSMContext, db, config):
 async def cancel_broadcast(message: Message, state: FSMContext):
     await state.clear()
     await message.answer("❌ Bekor qilindi")
+
+
+
+
+
+
+
+
